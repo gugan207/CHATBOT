@@ -229,13 +229,14 @@ export async function resolveLibraryQuery(
 
     case 'borrowing_rules': {
       const rules = await fetchRules();
-      const maxBooks = rules.find(r => r.rule_key === 'max_books_student')?.rule_value || '3';
-      const maxDays = rules.find(r => r.rule_key === 'max_days_student')?.rule_value || '14';
+      const isFaculty = memberId.includes('002');
+      const maxBooks = rules.find(r => r.rule_key === (isFaculty ? 'max_books_faculty' : 'max_books_student'))?.rule_value || (isFaculty ? '10' : '3');
+      const maxDays = rules.find(r => r.rule_key === (isFaculty ? 'max_days_faculty' : 'max_days_student'))?.rule_value || (isFaculty ? '30' : '14');
       const renewalLimit = rules.find(r => r.rule_key === 'renewal_limit')?.rule_value || '2';
-      groundedFacts.push(`Student Borrow Limit: ${maxBooks} items`);
+      groundedFacts.push(`${isFaculty ? 'Faculty' : 'Student'} Borrow Limit: ${maxBooks} items`);
       groundedFacts.push(`Loan Duration: ${maxDays} days`);
       groundedFacts.push(`Max Renewals: ${renewalLimit} times`);
-      reply = `As a student, you can borrow up to **${maxBooks} books simultaneously** for **${maxDays} days**. Each book can be renewed up to **${renewalLimit} times** provided there is no pending hold or overdue fine.`;
+      reply = `As a ${isFaculty ? 'faculty member / researcher' : 'student'}, you can borrow up to **${maxBooks} books simultaneously** for **${maxDays} days**. Each book can be renewed up to **${renewalLimit} times** provided there is no pending hold or overdue fine.`;
       results = rules.filter(r => r.category === 'borrowing' || r.category === 'renewals');
       break;
     }

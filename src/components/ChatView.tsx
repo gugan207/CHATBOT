@@ -26,6 +26,7 @@ import { resolveLibraryQuery } from '@/lib/nluEngine';
 interface ChatViewProps {
   onSelectBook: (book: Book) => void;
   onNavigateTab: (tab: 'chat' | 'search' | 'loans' | 'faq') => void;
+  activeMemberId?: string;
 }
 
 const SUGGESTED_QUERIES = [
@@ -38,13 +39,17 @@ const SUGGESTED_QUERIES = [
   { icon: '📐', label: 'Linear Algebra books', query: 'Show me available Linear Algebra books with eBooks' }
 ];
 
-export const ChatView: React.FC<ChatViewProps> = ({ onSelectBook, onNavigateTab }) => {
+export const ChatView: React.FC<ChatViewProps> = ({ 
+  onSelectBook, 
+  onNavigateTab,
+  activeMemberId = 'MEM-2026-001'
+}) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'msg-welcome-1',
       role: 'assistant',
-      content: "Hello Alex! 👋 Welcome to the **Smart Library Assistant**. I'm here to help you search for catalog items, verify real-time copy availability, look up shelf locations, explain borrowing limits & fines, or manage your active loans.\n\nTry asking a question in natural language below or choose a suggested query!",
-      timestamp: 'Just now'
+      content: `Hello! I'm your **Smart Library Assistant**. I can help you search our catalog across physical and digital collections, locate shelves, check loan due dates, renew books, or explain library borrowing policies.\n\nWhat would you like to explore today?`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);
   const [inputValue, setInputValue] = useState('');
@@ -52,6 +57,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onSelectBook, onNavigateTab 
   const [isListening, setIsListening] = useState(false);
   const [showGroundingDebug, setShowGroundingDebug] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -79,7 +85,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onSelectBook, onNavigateTab 
 
     try {
       const apiKey = typeof window !== 'undefined' ? localStorage.getItem('smart_lib_nvidia_key') || undefined : undefined;
-      const nluRes = await resolveLibraryQuery(text, apiKey, 'MEM-2026-001');
+      const nluRes = await resolveLibraryQuery(text, apiKey, activeMemberId);
 
       const botMsgId = `bot-${Date.now()}`;
       const botMsg: ChatMessage = {

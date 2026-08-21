@@ -85,6 +85,7 @@ export const MainApp: React.FC<MainAppProps> = ({ initialTab = 'chat' }) => {
           <ChatView
             onSelectBook={(book) => setSelectedBook(book)}
             onNavigateTab={handleTabChange}
+            activeMemberId={activeMemberId}
           />
         )}
 
@@ -99,6 +100,7 @@ export const MainApp: React.FC<MainAppProps> = ({ initialTab = 'chat' }) => {
           <MyLoansView
             onSelectBook={(book) => setSelectedBook(book)}
             onNavigateTab={handleTabChange}
+            activeMemberId={activeMemberId}
           />
         )}
 

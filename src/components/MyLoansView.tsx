@@ -23,9 +23,14 @@ import confetti from 'canvas-confetti';
 interface MyLoansViewProps {
   onSelectBook: (book: Book) => void;
   onNavigateTab: (tab: 'chat' | 'search' | 'loans' | 'faq') => void;
+  activeMemberId?: string;
 }
 
-export const MyLoansView: React.FC<MyLoansViewProps> = ({ onSelectBook, onNavigateTab }) => {
+export const MyLoansView: React.FC<MyLoansViewProps> = ({ 
+  onSelectBook, 
+  onNavigateTab,
+  activeMemberId = 'MEM-2026-001'
+}) => {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [actionMessage, setActionMessage] = useState<{ text: string; isError: boolean } | null>(null);
@@ -35,7 +40,7 @@ export const MyLoansView: React.FC<MyLoansViewProps> = ({ onSelectBook, onNaviga
   const loadLoans = async () => {
     setIsLoading(true);
     try {
-      const data = await fetchMemberLoans('MEM-2026-001');
+      const data = await fetchMemberLoans(activeMemberId);
       setLoans(data);
     } catch (e) {
       console.error('Failed to load loans', e);
@@ -46,7 +51,7 @@ export const MyLoansView: React.FC<MyLoansViewProps> = ({ onSelectBook, onNaviga
 
   useEffect(() => {
     loadLoans();
-  }, []);
+  }, [activeMemberId]);
 
   const activeLoans = loans.filter(l => l.status !== 'returned');
   const returnedLoans = loans.filter(l => l.status === 'returned');
@@ -76,7 +81,7 @@ export const MyLoansView: React.FC<MyLoansViewProps> = ({ onSelectBook, onNaviga
 
   const handlePayFineConfirm = async () => {
     setIsPayingFine(true);
-    const res = await payMemberFine('MEM-2026-001');
+    const res = await payMemberFine(activeMemberId);
     setIsPayingFine(false);
     setShowPaymentModal(false);
 
@@ -149,7 +154,7 @@ export const MyLoansView: React.FC<MyLoansViewProps> = ({ onSelectBook, onNaviga
           </div>
           <div className="flex items-baseline gap-2 mt-auto">
             <span className="text-5xl font-extrabold tracking-tight">{activeLoans.length}</span>
-            <span className="text-sm font-semibold text-primary-fixed">of 3 allowed items</span>
+            <span className="text-sm font-semibold text-primary-fixed">of {activeMemberId.includes('002') ? '10' : '3'} allowed items</span>
           </div>
         </div>
 
@@ -170,22 +175,22 @@ export const MyLoansView: React.FC<MyLoansViewProps> = ({ onSelectBook, onNaviga
                 d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                 fill="none"
                 stroke="currentColor"
-                strokeDasharray={`${Math.round((activeLoans.length / 3) * 100)}, 100`}
+                strokeDasharray={`${Math.min(100, Math.round((activeLoans.length / (activeMemberId.includes('002') ? 10 : 3)) * 100))}, 100`}
                 strokeLinecap="round"
                 strokeWidth="3.5"
               />
             </svg>
-            <div className="absolute inset-0 flex items-center justify-center flex-col">
-              <span className="text-base font-extrabold text-primary">
-                {Math.round((activeLoans.length / 3) * 100)}%
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+              <span className="text-sm font-extrabold text-on-surface">
+                {Math.min(100, Math.round((activeLoans.length / (activeMemberId.includes('002') ? 10 : 3)) * 100))}%
               </span>
+              <span className="text-[8px] font-bold text-on-surface-variant uppercase">Used</span>
             </div>
           </div>
-
-          <div className="flex flex-col justify-center">
-            <h2 className="text-base font-bold text-on-surface">Borrowing Capacity</h2>
-            <p className="text-xs text-on-surface-variant mt-1">
-              You have {3 - activeLoans.length} slot(s) remaining for immediate checkout.
+          <div>
+            <h3 className="font-bold text-sm text-on-surface">Borrowing Capacity</h3>
+            <p className="text-xs text-on-surface-variant mt-1 leading-relaxed">
+              You have {Math.max(0, (activeMemberId.includes('002') ? 10 : 3) - activeLoans.length)} remaining slot(s) before reaching your limit.
             </p>
             <button
               onClick={() => onNavigateTab('search')}
@@ -390,8 +395,8 @@ export const MyLoansView: React.FC<MyLoansViewProps> = ({ onSelectBook, onNaviga
 
             <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant/30 space-y-2 text-xs">
               <div className="flex justify-between">
-                <span className="text-on-surface-variant">Student ID:</span>
-                <span className="font-bold font-mono">MEM-2026-001</span>
+                <span className="text-on-surface-variant">Patron ID:</span>
+                <span className="font-bold font-mono">{activeMemberId}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-on-surface-variant">Overdue Days:</span>

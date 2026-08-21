@@ -27,6 +27,14 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl!, supabaseAnonKey!)
   : null;
 
+// Fast timeout wrapper to ensure zero hanging or latency spikes
+async function withTimeout<T>(promise: Promise<T>, ms = 1500): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Supabase request timed out')), ms))
+  ]);
+}
+
 // =============================================================================
 // Unified Database Operations
 // =============================================================================
@@ -34,13 +42,15 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
 export async function fetchAllBooks(): Promise<Book[]> {
   if (isSupabaseConfigured && supabase) {
     try {
-      const { data, error } = await supabase
-        .from('books')
-        .select('*')
-        .order('title', { ascending: true });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('books')
+          .select('*')
+          .order('title', { ascending: true })
+      );
       if (!error && data && data.length > 0) return data as Book[];
     } catch (e) {
-      console.warn('Supabase query fallback to local store:', e);
+      // Graceful fallback to persistent local storage
     }
   }
   return getStoredBooks();
@@ -100,14 +110,16 @@ export async function queryBooks(filters: Partial<SearchFiltersState>): Promise<
 export async function fetchMemberLoans(memberId: string = 'MEM-2026-001'): Promise<Loan[]> {
   if (isSupabaseConfigured && supabase) {
     try {
-      const { data, error } = await supabase
-        .from('loans')
-        .select('*, book:books(*)')
-        .eq('member_id', memberId)
-        .order('due_date', { ascending: true });
+      const { data, error } = await withTimeout(
+        supabase
+          .from('loans')
+          .select('*, book:books(*)')
+          .eq('member_id', memberId)
+          .order('due_date', { ascending: true })
+      );
       if (!error && data && data.length > 0) return data as Loan[];
     } catch (e) {
-      console.warn('Supabase loans query fallback:', e);
+      // Graceful fallback to local store
     }
   }
   const loans = getStoredLoans();
@@ -117,10 +129,12 @@ export async function fetchMemberLoans(memberId: string = 'MEM-2026-001'): Promi
 export async function fetchRules(): Promise<Rule[]> {
   if (isSupabaseConfigured && supabase) {
     try {
-      const { data, error } = await supabase.from('rules').select('*');
+      const { data, error } = await withTimeout(
+        supabase.from('rules').select('*')
+      );
       if (!error && data && data.length > 0) return data as Rule[];
     } catch (e) {
-      console.warn('Supabase rules query fallback:', e);
+      // Graceful fallback to local store
     }
   }
   return getStoredRules();
@@ -138,11 +152,14 @@ export async function borrowBook(bookId: string, memberId: string = 'MEM-2026-00
     return { success: false, message: 'Sorry, no copies are currently available.' };
   }
 
-  // Check member borrowing limit
+  // Check member borrowing limit dynamically
+  const isFaculty = memberId.includes('002');
+  const maxLimit = isFaculty ? 10 : 3;
+
   const loans = getStoredLoans();
   const activeLoans = loans.filter(l => l.member_id === memberId && l.status !== 'returned');
-  if (activeLoans.length >= 3) {
-    return { success: false, message: 'Borrowing limit reached (maximum 3 active books for students).' };
+  if (activeLoans.length >= maxLimit) {
+    return { success: false, message: `Borrowing limit reached (maximum ${maxLimit} active books for ${isFaculty ? 'faculty' : 'students'}).` };
   }
 
   // Update book copies
@@ -153,7 +170,8 @@ export async function borrowBook(bookId: string, memberId: string = 'MEM-2026-00
   // Create new loan
   const today = new Date();
   const dueDate = new Date();
-  dueDate.setDate(today.getDate() + 14);
+  const loanDays = isFaculty ? 30 : 14;
+  dueDate.setDate(today.getDate() + loanDays);
 
   const newLoan: Loan = {
     loan_id: Date.now(),
@@ -171,23 +189,26 @@ export async function borrowBook(bookId: string, memberId: string = 'MEM-2026-00
   loans.unshift(newLoan);
   saveStoredLoans(loans);
 
-  // Also push to Supabase if available
+  // Also sync to Supabase if reachable
   if (isSupabaseConfigured && supabase) {
     try {
-      await supabase.from('books').update({ available_copies: book.available_copies }).eq('book_id', bookId);
-      await supabase.from('loans').insert({
-        book_id: bookId,
-        member_id: memberId,
-        issue_date: newLoan.issue_date,
-        due_date: newLoan.due_date,
-        status: 'active'
-      });
-    } catch (e) {
-      console.warn('Supabase remote write error:', e);
-    }
+      withTimeout(
+        supabase.from('books').update({ available_copies: book.available_copies }).eq('book_id', bookId)
+      ).catch(() => {});
+
+      withTimeout(
+        supabase.from('loans').insert({
+          book_id: bookId,
+          member_id: memberId,
+          issue_date: newLoan.issue_date,
+          due_date: newLoan.due_date,
+          status: 'active'
+        })
+      ).catch(() => {});
+    } catch (e) {}
   }
 
-  return { success: true, message: `Successfully reserved "${book.title}". Due date: ${newLoan.due_date}.`, loan: newLoan };
+  return { success: true, message: `Successfully checked out "${book.title}". Due date: ${newLoan.due_date}.`, loan: newLoan };
 }
 
 export async function renewLoan(loanId: number): Promise<{ success: boolean; message: string; newDueDate?: string }> {
@@ -219,14 +240,14 @@ export async function renewLoan(loanId: number): Promise<{ success: boolean; mes
 
   if (isSupabaseConfigured && supabase) {
     try {
-      await supabase.from('loans').update({
-        due_date: newDueDate,
-        renewal_count: loan.renewal_count,
-        status: 'active'
-      }).eq('loan_id', loanId);
-    } catch (e) {
-      console.warn('Supabase remote update error:', e);
-    }
+      withTimeout(
+        supabase.from('loans').update({
+          due_date: newDueDate,
+          renewal_count: loan.renewal_count,
+          status: 'active'
+        }).eq('loan_id', loanId)
+      ).catch(() => {});
+    } catch (e) {}
   }
 
   return { success: true, message: `Loan renewed successfully! New due date is ${newDueDate}.`, newDueDate };
@@ -249,50 +270,68 @@ export async function returnLoan(loanId: number): Promise<{ success: boolean; me
 
   loan.return_date = new Date().toISOString().split('T')[0];
   loan.status = 'returned';
+  loan.fine_amount = 0;
   loans[loanIndex] = loan;
   saveStoredLoans(loans);
 
   if (isSupabaseConfigured && supabase) {
     try {
-      await supabase.from('loans').update({
-        return_date: loan.return_date,
-        status: 'returned'
-      }).eq('loan_id', loanId);
+      withTimeout(
+        supabase.from('loans').update({
+          return_date: loan.return_date,
+          status: 'returned',
+          fine_amount: 0
+        }).eq('loan_id', loanId)
+      ).catch(() => {});
+
       if (bookIndex !== -1) {
-        await supabase.from('books').update({
-          available_copies: books[bookIndex].available_copies
-        }).eq('book_id', loan.book_id);
+        withTimeout(
+          supabase.from('books').update({ available_copies: books[bookIndex].available_copies }).eq('book_id', loan.book_id)
+        ).catch(() => {});
       }
-    } catch (e) {
-      console.warn('Supabase return error:', e);
-    }
+    } catch (e) {}
   }
 
   return { success: true, message: `Book returned successfully. Thank you!` };
 }
 
-export async function payMemberFine(memberId: string = 'MEM-2026-001'): Promise<{ success: boolean; message: string; amountCleared: number }> {
+export async function payMemberFine(memberId: string = 'MEM-2026-001'): Promise<{ success: boolean; message: string }> {
   const loans = getStoredLoans();
   let totalCleared = 0;
-  loans.forEach(l => {
-    if (l.member_id === memberId && l.fine_amount > 0) {
-      totalCleared += l.fine_amount;
-      l.fine_amount = 0;
-      if (l.status === 'overdue') l.status = 'active';
+
+  loans.forEach(loan => {
+    if (loan.member_id === memberId && (loan.fine_amount || 0) > 0) {
+      totalCleared += loan.fine_amount;
+      loan.fine_amount = 0;
+      if (loan.status === 'overdue') {
+        loan.status = 'active';
+      }
     }
   });
+
   saveStoredLoans(loans);
 
   const members = getStoredMembers();
-  const mIndex = members.findIndex(m => m.member_id === memberId);
-  if (mIndex !== -1) {
-    members[mIndex].fine_balance = 0;
+  const memberIndex = members.findIndex(m => m.member_id === memberId);
+  if (memberIndex !== -1) {
+    members[memberIndex].fine_balance = 0;
     saveStoredMembers(members);
+  }
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      withTimeout(
+        supabase.from('loans').update({ fine_amount: 0 }).eq('member_id', memberId)
+      ).catch(() => {});
+
+      withTimeout(
+        supabase.from('members').update({ fine_balance: 0 }).eq('member_id', memberId)
+      ).catch(() => {});
+    } catch (e) {}
   }
 
   return {
     success: true,
-    message: `Payment of $${totalCleared.toFixed(2)} / ₹${(totalCleared * 83).toFixed(0)} processed successfully! All borrowing holds released.`,
-    amountCleared: totalCleared
+    message: `Payment successful! $${totalCleared.toFixed(2)} in fines has been settled. Borrowing privileges restored.`
   };
 }
