@@ -21,11 +21,19 @@ export const MainApp: React.FC<MainAppProps> = ({ initialTab = 'chat' }) => {
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [readingBook, setReadingBook] = useState<Book | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [activeMemberId, setActiveMemberId] = useState('MEM-2026-001');
   const [fineAmount, setFineAmount] = useState(0);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('smart_lib_active_member');
+      if (saved) setActiveMemberId(saved);
+    }
+  }, []);
 
   const checkFines = async () => {
     try {
-      const loans = await fetchMemberLoans('MEM-2026-001');
+      const loans = await fetchMemberLoans(activeMemberId);
       const total = loans
         .filter(l => l.status !== 'returned')
         .reduce((sum, l) => sum + (l.fine_amount || 0), 0);
@@ -37,7 +45,7 @@ export const MainApp: React.FC<MainAppProps> = ({ initialTab = 'chat' }) => {
 
   useEffect(() => {
     checkFines();
-  }, [activeTab]);
+  }, [activeTab, activeMemberId]);
 
   const handleTabChange = (tab: 'chat' | 'search' | 'loans' | 'faq') => {
     setActiveTab(tab);
@@ -52,6 +60,14 @@ export const MainApp: React.FC<MainAppProps> = ({ initialTab = 'chat' }) => {
     }
   };
 
+  const handleMemberChange = (memberId: string) => {
+    setActiveMemberId(memberId);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('smart_lib_active_member', memberId);
+    }
+    checkFines();
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-surface">
       {/* Top Application Header */}
@@ -60,6 +76,7 @@ export const MainApp: React.FC<MainAppProps> = ({ initialTab = 'chat' }) => {
         setActiveTab={handleTabChange}
         openSettings={() => setIsSettingsOpen(true)}
         fineAmount={fineAmount}
+        activeMemberId={activeMemberId}
       />
 
       {/* Main Screen Container with padding for fixed header */}
@@ -111,10 +128,12 @@ export const MainApp: React.FC<MainAppProps> = ({ initialTab = 'chat' }) => {
         onClose={() => setReadingBook(null)}
       />
 
-      {/* Settings / API Key Modal */}
+      {/* Settings / Control Center Modal */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+        activeMemberId={activeMemberId}
+        onMemberChange={handleMemberChange}
         onDataReset={() => {
           checkFines();
         }}

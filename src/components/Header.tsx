@@ -1,22 +1,40 @@
 'use client';
 
-import React, { useState } from 'react';
-import { BookOpen, Bell, SlidersHorizontal, MessageSquare, Search, BookMarked, HelpCircle, User } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { BookOpen, SlidersHorizontal, MessageSquare, Search, BookMarked, HelpCircle, Sparkles, ChevronDown } from 'lucide-react';
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 interface HeaderProps {
   activeTab: 'chat' | 'search' | 'loans' | 'faq';
   setActiveTab: (tab: 'chat' | 'search' | 'loans' | 'faq') => void;
   openSettings: () => void;
   fineAmount?: number;
+  activeMemberId?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
   openSettings,
-  fineAmount = 0
+  fineAmount = 0,
+  activeMemberId = 'MEM-2026-001'
 }) => {
   const [avatarError, setAvatarError] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const key = localStorage.getItem('smart_lib_nvidia_key');
+      setHasApiKey(Boolean(key && key.startsWith('nvapi-')));
+    }
+  }, []);
+
+  const isAlex = activeMemberId === 'MEM-2026-001';
+  const memberName = isAlex ? 'Alex Rivera' : 'Dr. Elena Rostova';
+  const memberRole = isAlex ? 'Student' : 'Faculty';
+  const memberAvatar = isAlex 
+    ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
+    : 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80';
 
   return (
     <header className="fixed top-0 w-full z-40 glass-header">
@@ -93,36 +111,44 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </nav>
 
-        {/* Right Utility: Notifications, Profile, Settings */}
-        <div className="flex items-center gap-3">
+        {/* Right Utility: Control Center Settings & Profile Badge */}
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          {/* Settings / Engine Control Center Button */}
           <button 
             onClick={openSettings}
-            title="Configure API Keys & Database"
-            className="w-10 h-10 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-primary flex items-center justify-center transition-colors border border-outline-variant/30"
+            title="Open AI Engine, Database & Settings Control Center"
+            className="h-10 px-3 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface-variant hover:text-primary flex items-center gap-2 transition-all border border-outline-variant/30 shadow-2xs hover:shadow-xs group"
           >
-            <SlidersHorizontal className="w-4 h-4" />
+            <div className="relative">
+              <SlidersHorizontal className="w-4 h-4 text-primary group-hover:scale-110 transition-transform" />
+              <span className="w-2 h-2 rounded-full bg-success absolute -top-0.5 -right-0.5 ring-2 ring-surface animate-pulse" />
+            </div>
+            <span className="text-xs font-bold text-primary hidden md:inline">Settings</span>
           </button>
 
+          {/* Patron Profile Badge */}
           <div 
-            onClick={() => setActiveTab('loans')}
-            className="flex items-center gap-2.5 pl-2 py-1 pr-3 rounded-full bg-surface-container-lowest border border-outline-variant/30 shadow-xs cursor-pointer hover:border-primary/40 transition-colors"
+            onClick={openSettings}
+            title="Click to switch patron profile or view account details"
+            className="flex items-center gap-2.5 pl-1.5 py-1 pr-3 rounded-full bg-surface-container-lowest border border-outline-variant/30 shadow-xs cursor-pointer hover:border-primary/50 transition-all hover:bg-surface-container-low"
           >
             {!avatarError ? (
               <img
-                alt="Alex Rivera"
+                alt={memberName}
                 className="w-8 h-8 rounded-full object-cover ring-2 ring-primary/20"
-                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"
+                src={memberAvatar}
                 onError={() => setAvatarError(true)}
               />
             ) : (
               <div className="w-8 h-8 rounded-full bg-primary text-white font-bold text-xs flex items-center justify-center ring-2 ring-primary/20">
-                AR
+                {isAlex ? 'AR' : 'ER'}
               </div>
             )}
             <div className="hidden lg:flex flex-col text-left">
-              <span className="text-xs font-bold text-on-surface leading-tight">Alex Rivera</span>
-              <span className="text-[10px] text-on-surface-variant">MEM-2026-001 (Student)</span>
+              <span className="text-xs font-bold text-on-surface leading-tight">{memberName}</span>
+              <span className="text-[10px] text-on-surface-variant font-medium">{activeMemberId} ({memberRole})</span>
             </div>
+            <ChevronDown className="w-3 h-3 text-on-surface-variant hidden lg:block opacity-60" />
           </div>
         </div>
       </div>
